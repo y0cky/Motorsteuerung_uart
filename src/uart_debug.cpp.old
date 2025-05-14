@@ -21,5 +21,6 @@ void loop() {
   while (Serial.available()) {
     int ch = Serial.read();
     Serial1.write(ch);
+    Serial.write(ch);
   }
 }

@@ -20,8 +20,8 @@ const char* password = "12345678";
 AsyncWebServer server(80);
 
 // ==== UART zu S32K144 ====
-#define UART_TX 17
-#define UART_RX 18
+#define UART_TX 7
+#define UART_RX 5
 
 // ==== Potentiometer-Eingang ====
 #define POTT_PIN 3  // ADC1_CHANNEL_6 (nur ADC1 Kanäle für WiFi!) 
@@ -167,24 +167,24 @@ void setup() {
 
   // ==== Start ====
   server.on("/start", HTTP_GET, [](AsyncWebServerRequest *request){
-    Serial1.println("START");
-    Serial.println("UART: START");
+    Serial1.println("START\n");
+    Serial.println("UART: START\n");
     showDisplay("Motor gestartet");
     request->send(200, "text/plain", "Motor gestartet");
   });
 
   // ==== Stop ====
   server.on("/stop", HTTP_GET, [](AsyncWebServerRequest *request){
-    Serial1.println("STOP");
-    Serial.println("UART: STOP");
+    Serial1.println("STOP\n");
+    Serial.println("UART: STOP\n");
     showDisplay("Motor gestoppt");
     request->send(200, "text/plain", "Motor gestoppt");
   });
 
   // ==== Status ====
   server.on("/status", HTTP_GET, [](AsyncWebServerRequest *request){
-    Serial1.println("STATUS?");
-    Serial.println(("UART: STATUS?"));
+    Serial1.println("STATUS?\n");
+    Serial.println(("UART: STATUS?\n"));
     delay(100); // Kurze Wartezeit für Antwort
     String status = "";
     while (Serial1.available()) {
@@ -207,15 +207,15 @@ void loop() {
   // --- Externe Vorgabe: Potentiometer abfragen und an Motor-Steuerung senden ---
   if(externeVorgabe) {
     long summe = 0;
-    const int N = 10;
+    const int N = 500;
     for(int i=0; i<N; i++)
       summe += analogRead(POTT_PIN);
     int pottiWert = summe / N;
-    int rpm_raw = map(pottiWert, 0, 4095, 0, 2000);            // Auf RPM umrechnen
-    int rpm = (rpm_raw / 50) * 50; // Rundung auf nächste 50 (0, 50, 100, 150, ..., 1500)
-    if(rpm > 1500) rpm = 1500; // Maximalwert beschränken
+    int rpm = map(pottiWert, 0, 4095, 0, 1500);            // Auf RPM umrechnen
+    // int rpm = (rpm_raw / 50) * 50; // Rundung auf nächste 50 (0, 50, 100, 150, ..., 1500)
+    // if(rpm > 1500) rpm = 1500; // Maximalwert beschränken
     // Nur bei signifikanter Änderung senden (Schwelle z.B. 50 U/min)
-    if (abs(rpm - letztePottiDrehzahl) > 40) {
+    if (abs(rpm - letztePottiDrehzahl) > 5) {
       String cmd = "SET_SPEED:" + String(rpm) + "\n";
       Serial1.print(cmd);
       Serial.println("UART: " + cmd);
