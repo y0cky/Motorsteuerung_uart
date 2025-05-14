@@ -29,7 +29,7 @@ AsyncWebServer server(80);
 #define POTT_PIN 3  // ADC1_CHANNEL_6 (nur ADC1 Kanäle für WiFi!) 
 
 // ==== Drehzahl-Modus ====
-volatile bool externeVorgabe = false;      // Steuerung: false = Interne Vorgabe, true = Extern via Poti
+volatile bool externeVorgabe = true;      // Steuerung: false = Interne Vorgabe, true = Extern via Poti
 volatile int letztePottiDrehzahl = -1;     // Zum Senden nur bei Änderung
 
 // ==== Hilfsfunktion Display ====
@@ -289,7 +289,8 @@ void loop() {
     for(int i=0; i<N; i++)
       summe += analogRead(POTT_PIN);
     int pottiWert = summe / N;
-    int rpm = map(pottiWert, 0, 4095, 0, 1500);            // Auf RPM umrechnen
+    // Serial.println("Poti: " + String(pottiWert));
+    int rpm = map(pottiWert, 0, 4095, 800, 1500);            // Auf RPM umrechnen
     // int rpm = (rpm_raw / 50) * 50; // Rundung auf nächste 50 (0, 50, 100, 150, ..., 1500)
     // if(rpm > 1500) rpm = 1500; // Maximalwert beschränken
     // Nur bei signifikanter Änderung senden (Schwelle z.B. 50 U/min)
