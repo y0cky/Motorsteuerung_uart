@@ -24,7 +24,7 @@ AsyncWebServer server(80);
 #define UART_RX 18
 
 // ==== Potentiometer-Eingang ====
-#define POTT_PIN 1  // ADC1_CHANNEL_6 (nur ADC1 Kanäle für WiFi!) 
+#define POTT_PIN 3  // ADC1_CHANNEL_6 (nur ADC1 Kanäle für WiFi!) 
 
 // ==== Drehzahl-Modus ====
 volatile bool externeVorgabe = false;      // Steuerung: false = Interne Vorgabe, true = Extern via Poti
@@ -49,7 +49,10 @@ void showDisplay(const String& head, const String& line2 = "", const String& lin
 // ==== SETUP ====
 void setup() {
   Serial.begin(115200);         // Debugging über USB
+  Serial.println("DEBUG: setup() läuft an!");
+
   Serial1.begin(115200, SERIAL_8N1, UART_RX, UART_TX); // UART zur S32K144
+  
 
   // I2C für OLED initialisieren
   Wire.begin(OLED_SDA, OLED_SCL);
@@ -164,6 +167,7 @@ void setup() {
   // ==== Start ====
   server.on("/start", HTTP_GET, [](AsyncWebServerRequest *request){
     Serial1.println("START");
+    Serial.println("UART: START");
     showDisplay("Motor gestartet");
     request->send(200, "text/plain", "Motor gestartet");
   });
@@ -171,6 +175,7 @@ void setup() {
   // ==== Stop ====
   server.on("/stop", HTTP_GET, [](AsyncWebServerRequest *request){
     Serial1.println("STOP");
+    Serial.println("UART: STOP");
     showDisplay("Motor gestoppt");
     request->send(200, "text/plain", "Motor gestoppt");
   });
@@ -178,6 +183,7 @@ void setup() {
   // ==== Status ====
   server.on("/status", HTTP_GET, [](AsyncWebServerRequest *request){
     Serial1.println("STATUS?");
+    Serial.println(("UART: STATUS?"));
     delay(100); // Kurze Wartezeit für Antwort
     String status = "";
     while (Serial1.available()) {
@@ -200,11 +206,14 @@ void loop() {
   // --- Externe Vorgabe: Potentiometer abfragen und an Motor-Steuerung senden ---
   if(externeVorgabe) {
     int pottiWert = analogRead(POTT_PIN);                   // Rohwert 0...4095
-    int rpm = map(pottiWert, 0, 4095, 0, 10000);            // Auf RPM umrechnen
-    // Nur bei signifikanter Änderung senden (Schwelle z.B. 10 U/min)
-    if (abs(rpm - letztePottiDrehzahl) > 10) {
+    int rpm_raw = map(pottiWert, 0, 4095, 0, 2000);            // Auf RPM umrechnen
+    int rpm = (rpm_raw / 50) * 50; // Rundung auf nächste 50 (0, 50, 100, 150, ..., 1500)
+    if(rpm > 1500) rpm = 1500; // Maximalwert beschränken
+    // Nur bei signifikanter Änderung senden (Schwelle z.B. 50 U/min)
+    if (abs(rpm - letztePottiDrehzahl) > 40) {
       String cmd = "SET_SPEED:" + String(rpm) + "\n";
       Serial1.print(cmd);
+      Serial.println("UART: " + cmd);
       showDisplay("Poti Drehzahl", "RPM: " + String(rpm));
       letztePottiDrehzahl = rpm;
     }
