@@ -153,6 +153,7 @@ void setup() {
         // Setze Drehzahl an Motorsteuerung
         String cmd = "SET_SPEED:" + speed + "\n";
         Serial1.print(cmd);
+        Serial.println("UART: " + cmd);
         showDisplay("Drehzahl gesetzt", "RPM: " + speed);
         request->send(200, "text/plain", "Drehzahl gesetzt auf: " + speed);
       } else {
@@ -205,7 +206,11 @@ void setup() {
 void loop() {
   // --- Externe Vorgabe: Potentiometer abfragen und an Motor-Steuerung senden ---
   if(externeVorgabe) {
-    int pottiWert = analogRead(POTT_PIN);                   // Rohwert 0...4095
+    long summe = 0;
+    const int N = 10;
+    for(int i=0; i<N; i++)
+      summe += analogRead(POTT_PIN);
+    int pottiWert = summe / N;
     int rpm_raw = map(pottiWert, 0, 4095, 0, 2000);            // Auf RPM umrechnen
     int rpm = (rpm_raw / 50) * 50; // Rundung auf nächste 50 (0, 50, 100, 150, ..., 1500)
     if(rpm > 1500) rpm = 1500; // Maximalwert beschränken
