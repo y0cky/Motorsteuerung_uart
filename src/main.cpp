@@ -4,7 +4,7 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 
-// Display-Pins
+// ==== Display-Pins und I2C ====
 #define OLED_SDA 33
 #define OLED_SCL 35
 #define SCREEN_WIDTH 128
@@ -12,17 +12,25 @@
 
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 
-// Deine WLAN-Zugangsdaten
+// ==== WLAN Zugangsdaten ====
 const char* ssid = "Motorsteuerung";
 const char* password = "12345678";
 
-// Webserver auf Port 80
+// ==== Webserver ====
 AsyncWebServer server(80);
 
-// UART zu S32K144 (TX=GPIO17, RX=GPIO18)
+// ==== UART zu S32K144 ====
 #define UART_TX 17
 #define UART_RX 18
 
+// ==== Potentiometer-Eingang ====
+#define POTT_PIN 1  // ADC1_CHANNEL_6 (nur ADC1 Kanäle für WiFi!) 
+
+// ==== Drehzahl-Modus ====
+volatile bool externeVorgabe = false;      // Steuerung: false = Interne Vorgabe, true = Extern via Poti
+volatile int letztePottiDrehzahl = -1;     // Zum Senden nur bei Änderung
+
+// ==== Hilfsfunktion Display ====
 void showDisplay(const String& head, const String& line2 = "", const String& line3 = "") {
   display.clearDisplay();
   display.setTextColor(SSD1306_WHITE);
@@ -38,9 +46,10 @@ void showDisplay(const String& head, const String& line2 = "", const String& lin
   display.display();
 }
 
+// ==== SETUP ====
 void setup() {
-  Serial.begin(115200);         // USB-Debugging
-  Serial1.begin(115200, SERIAL_8N1, UART_RX, UART_TX);  // UART zur S32K144
+  Serial.begin(115200);         // Debugging über USB
+  Serial1.begin(115200, SERIAL_8N1, UART_RX, UART_TX); // UART zur S32K144
 
   // I2C für OLED initialisieren
   Wire.begin(OLED_SDA, OLED_SCL);
@@ -63,7 +72,7 @@ void setup() {
   display.println(WiFi.softAPIP());
   display.display();
 
-  // HTML UI
+  // ==== HTML UI mit Modus-Umschalter ====
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
     String html = R"rawliteral(
       <!DOCTYPE html>
@@ -72,83 +81,104 @@ void setup() {
         <title>BLDC Motorsteuerung</title>
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <style>
-          body { font-family: Arial; text-align: center; padding: 20px; background: #f2f2f2; }
-          h2 { color: #333; }
-          input[type=number] {
-            padding: 8px; width: 80px; border-radius: 5px; border: 1px solid #ccc;
-          }
-          input[type=submit], .btn {
-            padding: 10px 20px;
-            background: #007BFF;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            margin: 5px;
-            cursor: pointer;
-          }
-          .btn:hover, input[type=submit]:hover {
-            background: #0056b3;
-          }
-          .container {
-            background: white;
-            padding: 20px;
-            border-radius: 10px;
-            display: inline-block;
-            box-shadow: 0 0 10px rgba(0,0,0,0.1);
-          }
+          body { font-family: Arial; background: #f2f2f2; text-align:center; padding:30px;}
+          .container {background:#fff; padding:20px; border-radius:10px; display:inline-block; box-shadow:0 0 10px rgba(0,0,0,0.1);}
+          h2 {color:#333;}
+          .btn {padding:10px 24px; background:#007BFF; color:white; border:none; border-radius:5px; margin:6px; cursor:pointer;}
+          .btn:hover {background:#0056b3;}
+          input[type=number] {padding: 7px; width: 90px; border-radius:5px; border:1px solid #ccc;}
+          label {font-size:1.07em; margin:8px;}
         </style>
       </head>
       <body>
         <div class="container">
           <h2>BLDC Motorsteuerung</h2>
-          <form action="/set" method="get">
-            <label>Drehzahl (RPM):</label><br>
-            <input type="number" name="speed" min="0" max="10000"><br><br>
-            <input type="submit" value="Setzen">
+          <form id="drehzahlForm" action="/set" method="get" style="display:inline;">
+            <label>
+              <input type="radio" name="modus" value="intern" checked onchange="modusChanged()"> Interne Drehzahl (Web)
+            </label>
+            <label>
+              <input type="radio" name="modus" value="extern" onchange="modusChanged()"> Externe Drehzahl (Poti)
+            </label>
+            <br><br>
+            <div id="drehzahlEingabe">
+              <label>Drehzahl (RPM):</label><br>
+              <input type="number" name="speed" min="0" max="10000"><br><br>
+            </div>
+            <input type="submit" class="btn" value="Setzen">
           </form>
           <br>
           <a href="/start"><button class="btn">Motor Starten</button></a>
           <a href="/stop"><button class="btn">Motor Stoppen</button></a>
           <a href="/status"><button class="btn">Status abfragen</button></a>
+          <br><br>
+          <div id="infoText"></div>
         </div>
+        <script>
+          function modusChanged() {
+            var extern = document.querySelector('input[name="modus"]:checked').value === "extern";
+            document.getElementById('drehzahlEingabe').style.display = extern ? "none" : "block";
+            var xhr = new XMLHttpRequest();
+            xhr.open("GET", "/set_mode?extern=" + (extern?1:0), true);
+            xhr.onload = function(){document.getElementById("infoText").innerText=xhr.responseText;}
+            xhr.send();
+          }
+        </script>
       </body>
       </html>
     )rawliteral";
     request->send(200, "text/html", html);
   });
 
-  // Drehzahl setzen
-  server.on("/set", HTTP_GET, [](AsyncWebServerRequest *request){
-    if (request->hasParam("speed")) {
-      String speed = request->getParam("speed")->value();
-      String cmd = "SET_SPEED:" + speed + "\n";
-      Serial1.print(cmd);
-      showDisplay("Drehzahl gesetzt", "RPM: " + speed);
-      request->send(200, "text/plain", "Drehzahl gesetzt auf: " + speed);
+  // ==== Drehzahl-Modus setzen (extern/intern) ====
+  server.on("/set_mode", HTTP_GET, [](AsyncWebServerRequest *request){
+    if (request->hasParam("extern")) {
+      externeVorgabe = request->getParam("extern")->value().toInt() == 1;
+      letztePottiDrehzahl = -1; // Wertangabe zurücksetzen
+      showDisplay("Modus gewechselt", externeVorgabe ? "Extern (Poti)" : "Intern (Web)");
+      request->send(200, "text/plain", externeVorgabe ? "Modus: Extern (Poti)" : "Modus: Intern (Web)");
     } else {
-      showDisplay("Fehler", "Kein Speed");
       request->send(400, "text/plain", "Fehlender Parameter");
     }
   });
 
-  // Start
+  // ==== Drehzahl setzen per Web ====
+  server.on("/set", HTTP_GET, [](AsyncWebServerRequest *request){
+    if (!externeVorgabe) { // Nur wenn interne Vorgabe aktiv
+      if (request->hasParam("speed")) {
+        String speed = request->getParam("speed")->value();
+        // Setze Drehzahl an Motorsteuerung
+        String cmd = "SET_SPEED:" + speed + "\n";
+        Serial1.print(cmd);
+        showDisplay("Drehzahl gesetzt", "RPM: " + speed);
+        request->send(200, "text/plain", "Drehzahl gesetzt auf: " + speed);
+      } else {
+        showDisplay("Fehler", "Kein Speed");
+        request->send(400, "text/plain", "Fehlender Parameter");
+      }
+    } else {
+      request->send(200, "text/plain", "Im externen Modus ist die Vergabe gesperrt!");
+    }
+  });
+
+  // ==== Start ====
   server.on("/start", HTTP_GET, [](AsyncWebServerRequest *request){
     Serial1.println("START");
     showDisplay("Motor gestartet");
     request->send(200, "text/plain", "Motor gestartet");
   });
 
-  // Stop
+  // ==== Stop ====
   server.on("/stop", HTTP_GET, [](AsyncWebServerRequest *request){
     Serial1.println("STOP");
     showDisplay("Motor gestoppt");
     request->send(200, "text/plain", "Motor gestoppt");
   });
 
-  // Status
+  // ==== Status ====
   server.on("/status", HTTP_GET, [](AsyncWebServerRequest *request){
     Serial1.println("STATUS?");
-    delay(100); // Antwortzeit abwarten
+    delay(100); // Kurze Wartezeit für Antwort
     String status = "";
     while (Serial1.available()) {
       status += (char)Serial1.read();
@@ -159,8 +189,26 @@ void setup() {
   });
 
   server.begin();
+
+  // ==== ADC (Potentiometer) vorbereiten ====
+  analogReadResolution(12);        // 0...4095 für ESP32
+  pinMode(POTT_PIN, INPUT);        // Potentiometer-Pin als Eingang
 }
 
+// ==== HAUPTSCHLEIFE ====
 void loop() {
-  // Nichts notwendig, Webserver läuft asynchron
+  // --- Externe Vorgabe: Potentiometer abfragen und an Motor-Steuerung senden ---
+  if(externeVorgabe) {
+    int pottiWert = analogRead(POTT_PIN);                   // Rohwert 0...4095
+    int rpm = map(pottiWert, 0, 4095, 0, 10000);            // Auf RPM umrechnen
+    // Nur bei signifikanter Änderung senden (Schwelle z.B. 10 U/min)
+    if (abs(rpm - letztePottiDrehzahl) > 10) {
+      String cmd = "SET_SPEED:" + String(rpm) + "\n";
+      Serial1.print(cmd);
+      showDisplay("Poti Drehzahl", "RPM: " + String(rpm));
+      letztePottiDrehzahl = rpm;
+    }
+    delay(100); // Abfrageinterval (anpassen bei Bedarf!)
+  }
+  // Der Webserver läuft asynchron (kein weiteres Handling nötig)
 }
