@@ -167,24 +167,24 @@ void setup() {
 
   // ==== Start ====
   server.on("/start", HTTP_GET, [](AsyncWebServerRequest *request){
-    Serial1.println("START\n");
-    Serial.println("UART: START\n");
+    Serial1.print("START\n");
+    Serial.print("UART: START\n");
     showDisplay("Motor gestartet");
     request->send(200, "text/plain", "Motor gestartet");
   });
 
   // ==== Stop ====
   server.on("/stop", HTTP_GET, [](AsyncWebServerRequest *request){
-    Serial1.println("STOP\n");
-    Serial.println("UART: STOP\n");
+    Serial1.print("STOP\n");
+    Serial.print("UART: STOP\n");
     showDisplay("Motor gestoppt");
     request->send(200, "text/plain", "Motor gestoppt");
   });
 
   // ==== Status ====
   server.on("/status", HTTP_GET, [](AsyncWebServerRequest *request){
-    Serial1.println("STATUS?\n");
-    Serial.println(("UART: STATUS?\n"));
+    Serial1.print("STATUS?\n");
+    Serial.print(("UART: STATUS?\n"));
     delay(100); // Kurze Wartezeit für Antwort
     String status = "";
     while (Serial1.available()) {
@@ -215,10 +215,10 @@ void loop() {
     // int rpm = (rpm_raw / 50) * 50; // Rundung auf nächste 50 (0, 50, 100, 150, ..., 1500)
     // if(rpm > 1500) rpm = 1500; // Maximalwert beschränken
     // Nur bei signifikanter Änderung senden (Schwelle z.B. 50 U/min)
-    if (abs(rpm - letztePottiDrehzahl) > 5) {
+    if ((abs(rpm - letztePottiDrehzahl) > 5) || (rpm == 0) || (rpm == 1500) && (letztePottiDrehzahl != 0) && (letztePottiDrehzahl != 1500)) {
       String cmd = "SET_SPEED:" + String(rpm) + "\n";
       Serial1.print(cmd);
-      Serial.println("UART: " + cmd);
+      Serial.print("UART: " + cmd);
       showDisplay("Poti Drehzahl", "RPM: " + String(rpm));
       letztePottiDrehzahl = rpm;
     }
