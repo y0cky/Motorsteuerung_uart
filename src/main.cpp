@@ -167,6 +167,17 @@ void setup() {
           btn.classList.remove("active");
         }
       }
+
+      function setModus(extern, ultraschall = false) {
+  let url = "/set_mode?extern=" + (extern ? "1" : "0");
+  if (extern) {
+    url += "&ultraschall=" + (ultraschall ? "1" : "0");
+  }
+  fetch(url)
+    .then(response => response.text())
+    .then(text => console.log("Modus gesetzt:", text));
+}
+
   };
   xhr.send();
 }
