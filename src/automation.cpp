@@ -58,10 +58,10 @@ void updateAutomation() {
       break;
 
     case DIRECTION_CHANGED:
-      // Wenn 750 ms vergangen sind, wechsle den Zustand zu STOPPED
+      // Wenn 5s vergangen sind, wechsle den Zustand zu STOPPED
       if (now - lastStateChange > 5000) {
-        Serial1.println("STOP"); 
-        Serial.println(String(millis()) + " ms: UART: STOP");
+        // Serial1.println("STOP"); 
+        // Serial.println(String(millis()) + " ms: UART: STOP");
         
         // Hier nach dem SET_SPEED auf STOP wechseln
         currentState = STOPPED;            // Zustand auf STOPPED setzen
@@ -70,8 +70,8 @@ void updateAutomation() {
       break;
 
     case STOPPED:
-      // Wenn 5 Sekunden vergangen sind, stoppe die Automatisierung
-      if (now - lastStateChange > 2000) {
+      // Wenn 0,2 Sekunden vergangen sind, stoppe die Automatisierung
+      if (now - lastStateChange > 200) {
         stopAutomationSequence();   // Automatisierung stoppen
         // Serial.println(String(millis()) + " ms: UART: STOP (Automation)");  // Zeigt die Zeit und Nachricht an
       }

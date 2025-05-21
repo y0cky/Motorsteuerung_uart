@@ -4,7 +4,14 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include "automation.h"
+#include "ultraschall.h"
 
+// ==== HC-SR04 Pins ====
+#define TRIG_PIN 4
+#define ECHO_PIN 2
+
+enum ModusTyp { INTERN, EXTERN_POTI, EXTERN_ULTRASCHALL };
+volatile ModusTyp aktuellerModus = INTERN;
 
 // ==== Display-Pins und I2C ====
 #define OLED_SDA 33
@@ -30,6 +37,7 @@ AsyncWebServer server(80);
 
 // ==== Drehzahl-Modus ====
 volatile bool externeVorgabe = true;      // Steuerung: false = Interne Vorgabe, true = Extern via Poti
+bool ultraschallAktiv = false;       // Ultraschall-Sensor aktiv
 volatile int letztePottiDrehzahl = -1;     // Zum Senden nur bei Änderung
 
 // ==== Hilfsfunktion Display ====
@@ -102,12 +110,10 @@ void setup() {
     <div class="container">
       <h2>BLDC Motorsteuerung</h2>
       <form id="drehzahlForm" action="/set" method="get" style="display:inline;">
-        <label>
-          <input type="radio" name="modus" value="intern" checked onchange="modusChanged()"> Interne Drehzahl (Web)
-        </label>
-        <label>
-          <input type="radio" name="modus" value="extern" onchange="modusChanged()"> Externe Drehzahl (Poti)
-        </label>
+        <label><input type="radio" name="steuerung" onclick="setModus(false)"> Intern (Web)</label><br>
+        <label><input type="radio" name="steuerung" onclick="setModus(true, false)"> Extern (Poti)</label><br>
+        <label><input type="radio" name="steuerung" onclick="setModus(true, true)"> Extern (Ultraschall)</label><br>
+
         <br><br>
         <div id="drehzahlEingabe">
           <label>Drehzahl (RPM):</label><br>
@@ -208,15 +214,54 @@ void setup() {
 
   // ==== Drehzahl-Modus setzen (extern/intern) ====
   server.on("/set_mode", HTTP_GET, [](AsyncWebServerRequest *request){
-    if (request->hasParam("extern")) {
-      externeVorgabe = request->getParam("extern")->value().toInt() == 1;
-      letztePottiDrehzahl = -1; // Wertangabe zurücksetzen
-      showDisplay("Modus gewechselt", externeVorgabe ? "Extern (Poti)" : "Intern (Web)");
-      request->send(200, "text/plain", externeVorgabe ? "Modus: Extern (Poti)" : "Modus: Intern (Web)");
-    } else {
-      request->send(400, "text/plain", "Fehlender Parameter");
+  if (request->hasParam("extern")) {
+    externeVorgabe = request->getParam("extern")->value().toInt() == 1;
+  }
+
+  if (request->hasParam("ultraschall")) {
+    ultraschallAktiv = request->getParam("ultraschall")->value().toInt() == 1;
+  }
+
+  letztePottiDrehzahl = -1; // reset RPM cache
+
+  String text = "Modus: ";
+  if (!externeVorgabe) {
+    text += "Intern (Web)";
+  } else {
+  if (ultraschallAktiv) {
+    // EXTERN mit Ultraschall
+    long abstand = leseAbstand();
+    int rpm = berechneRPMausAbstand(abstand);
+
+    if (abs(rpm - letztePottiDrehzahl) > 5) {
+      String cmd = "SET_SPEED:" + String(rpm) + "\n";
+      Serial1.print(cmd);
+      Serial.print("UART (US): " + cmd);
+      showDisplay("RPM: Ultraschall", "Abstand: " + String(abstand) + "cm", "RPM: " + String(rpm));
+      letztePottiDrehzahl = rpm;
     }
-  });
+  }
+  else {
+    // EXTERN mit Poti
+    int potiWert = analogRead(POTI_PIN);
+    int rpm = map(potiWert, 0, 4095, 800, 1500);
+
+    if (abs(rpm - letztePottiDrehzahl) > 5) {
+      String cmd = "SET_SPEED:" + String(rpm) + "\n";
+      Serial1.print(cmd);
+      Serial.print("UART (POTI): " + cmd);
+      showDisplay("RPM: Poti", "Poti-Wert: " + String(potiWert), "RPM: " + String(rpm));
+      letztePottiDrehzahl = rpm;
+    }
+  }
+
+  delay(200);
+}
+
+  showDisplay("Modus gewechselt", text);
+  request->send(200, "text/plain", text);
+});
+
 
   // ==== Drehzahl setzen per Web ====
   server.on("/set", HTTP_GET, [](AsyncWebServerRequest *request){
@@ -276,6 +321,9 @@ void setup() {
 
   // ==== Automatisierung initialisieren ====
   initAutomation();
+
+  // Intialisiere Ultraschall-Sensor
+  initUltraschall(TRIG_PIN, ECHO_PIN);
 
 }
 
