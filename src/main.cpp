@@ -116,14 +116,20 @@ void setup() {
         <input type="submit" class="btn" value="Setzen">
       </form>
       <br>
-      <button class="btn" onclick="sendCommand('/start')">Motor Starten</button>
+      <button class="btn" onclick="sendCommand('/startr')">Motor Rechtslauf</button>
+      <button class="btn" onclick="sendCommand('/startl')">Motor Linkslauf</button>
+      <button class="btn" onclick="sendCommand('/stop')">Motor Stop</button>
+      <!--
       <button class="btn" onclick="sendCommand('/stop')">Motor Stoppen</button>
       <button id="autoStartBtn" class="btn" onclick="sendCommand('/auto_start', true)">Automatik Start</button>
       <button class="btn" onclick="sendCommand('/auto_stop')">Automatik Stop</button>
       <button class="btn" onclick="sendCommand('/status')">Status abfragen</button>
+      -->
       <br><br>
       <div id="infoText"></div>
+      <!--
       <div id="autoStatus" style="margin-top:20px; font-weight:bold;">Automationsstatus: Wird geladen...</div>
+      -->
     </div>
     <script>
     function sendCommand(url, checkStatus = false) {
@@ -239,11 +245,19 @@ void setup() {
   });
 
   // ==== Start ====
-  server.on("/start", HTTP_GET, [](AsyncWebServerRequest *request){
-    Serial1.print("START\n");
-    Serial.print("UART: START\n");
-    showDisplay("Motor gestartet");
-    request->send(200, "text/plain", "Motor gestartet");
+  server.on("/startl", HTTP_GET, [](AsyncWebServerRequest *request){
+    Serial1.print("STARTL\n");
+    Serial.print("UART: STARTL\n");
+    showDisplay("Motor gestartet Linkslauf");
+    request->send(200, "text/plain", "Motor gestartet Linkslauf");
+  });
+
+  // ==== Start ====
+  server.on("/startr", HTTP_GET, [](AsyncWebServerRequest *request){
+    Serial1.print("STARTR\n");
+    Serial.print("UART: STARTR\n");
+    showDisplay("Motor gestartet Rechslauf");
+    request->send(200, "text/plain", "Motor gestartet Rechtslauf");
   });
 
   // ==== Stop ====
@@ -290,7 +304,7 @@ void loop() {
       summe += analogRead(POTT_PIN);
     int pottiWert = summe / N;
     // Serial.println("Poti: " + String(pottiWert));
-    int rpm = map(pottiWert, 0, 4095, 800, 1500);            // Auf RPM umrechnen
+    int rpm = map(pottiWert, 0, 4095, 800, 2200);            // Auf RPM umrechnen
     // int rpm = (rpm_raw / 50) * 50; // Rundung auf nächste 50 (0, 50, 100, 150, ..., 1500)
     // if(rpm > 1500) rpm = 1500; // Maximalwert beschränken
     // Nur bei signifikanter Änderung senden (Schwelle z.B. 50 U/min)
